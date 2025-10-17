@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-# Semnal sinusoidal de 800 Hz, durată 3 secunde
+
 Fs = 8000
 Ts = 1 / Fs
 durata = 3.0
@@ -15,3 +15,4 @@ plt.xlabel('t [s]')
 plt.ylabel('Amplitudine')
 plt.grid(True)
 plt.show()
+
