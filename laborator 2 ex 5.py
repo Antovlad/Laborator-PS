@@ -22,4 +22,5 @@ amp = 0.3
 print("Redau două tonuri: 440 Hz apoi 880 Hz...")
 sd.play(amp * x, fs)
 sd.wait()  
-print("Gata 🎧")
+print("Gata")
+
