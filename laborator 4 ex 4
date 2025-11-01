@@ -1,0 +1,2 @@
+Limita inferioara a benzii este 40. Limita superioara este 200. Notam
+k = numărul de benzi care încap în frecvența de eșantionare. Vom avea 2*200/k<=f<=2*40/(k-1) unde f e frecventa de esantionare. Deci avem inegalitatea 400/k>=80/(k-1) deci k>=2 e imposibil. Astfel, avem k=1 si f>=400. Raspunsul e 400.
