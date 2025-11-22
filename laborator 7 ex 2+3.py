@@ -1,143 +1,120 @@
+
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.pyplot import imread
-from numpy.fft import fft2, ifft2, fftshift, ifftshift
+import imageio.v2 as imageio   
 
 
-image_path = r"C:\Users\Antoniu\Desktop\raccoon.png"
-img = imread(image_path)
 
-if img.ndim == 3:
-    img = np.dot(img[..., :3], [0.299, 0.587, 0.114])
 
-X = img.astype(float)
+X_rgb = imageio.imread(r"C:\Users\Antoniu\Desktop\raccoon.png")
 
-if X.max() <= 1.0:
-    X = X * 255.0
+print("Dimensiunea inițială a imaginii:", X_rgb.shape)
 
-rows, cols = X.shape
+if X_rgb.ndim == 3 and X_rgb.shape[2] == 4:
+    X_rgb = X_rgb[..., :3]   # păstrăm doar R,G,B
 
-pixel_noise = 200
-noise = np.random.randint(-pixel_noise, pixel_noise + 1, size=X.shape)
-X_noisy = X + noise
-X_noisy = np.clip(X_noisy, 0, 255)
 
-def snr_db(original, test):
-    signal_energy = np.sum(original ** 2)
-    noise_energy  = np.sum((original - test) ** 2) + 1e-12
-    return 10 * np.log10(signal_energy / noise_energy)
+if X_rgb.ndim == 3:
+    X = (0.299 * X_rgb[..., 0] +
+         0.587 * X_rgb[..., 1] +
+         0.114 * X_rgb[..., 2])
+else:
+    X = X_rgb.astype(np.float64)
 
-plt.figure(figsize=(8, 4))
-plt.subplot(1, 2, 1)
-plt.imshow(X, cmap='gray')
-plt.title("Raton original")
-plt.axis('off')
+X = X.astype(np.float64)
 
-plt.subplot(1, 2, 2)
-plt.imshow(X_noisy, cmap='gray')
-plt.title("Raton cu zgomot (pt. Ex. 3)")
-plt.axis('off')
+print("Dimensiunea imaginii gri:", X.shape) 
 
-plt.tight_layout()
+plt.imshow(X, cmap="gray")
+plt.title("Original (grayscale)")
+plt.axis("on")
 plt.show()
 
 
 
-Y = fft2(X)
-Y_shift = fftshift(Y)
 
-mag = np.abs(Y_shift).ravel()
+def compute_snr(ref, test):
+    ref  = ref.astype(np.float64)
+    test = test.astype(np.float64)
+    signal_power = np.mean(ref**2)
+    noise_power  = np.mean((ref - test)**2) + 1e-12
+    return 10 * np.log10(signal_power / noise_power)
 
-idx_sorted = np.argsort(mag)[::-1]
-mag_sorted = mag[idx_sorted]
 
-SNR_target = 20  
+def low_pass_mask(shape, R):
+    rows, cols = shape
+    crow, ccol = rows // 2, cols // 2
+    y, x = np.ogrid[:rows, :cols]
+    dist2 = (y - crow)**2 + (x - ccol)**2
+    return dist2 <= R**2
 
-total_energy_freq = np.sum(mag**2)
-energy_kept = 0.0
-K = len(mag_sorted)  
 
-for k, v in enumerate(mag_sorted):
-    energy_kept += v**2
-    noise_energy_freq = total_energy_freq - energy_kept
-    SNR_freq = 10 * np.log10((energy_kept + 1e-12) /
-                             (noise_energy_freq + 1e-12))
-    if SNR_freq >= SNR_target:
-        K = k + 1
-        break
 
-print("=== EXERCIȚIUL 2 ===")
-print(f"SNR țintă în frecvență : {SNR_target:.2f} dB")
-print(f"Coeficienți păstrați   : {K} / {mag.size}")
-print(f"Compresie              : {100 * (1 - K/mag.size):.2f} %")
 
-mask_flat = np.zeros_like(mag, dtype=bool)
-mask_flat[idx_sorted[:K]] = True
-mask = mask_flat.reshape(Y_shift.shape)
+Y = np.fft.fft2(X)
+Y_shift = np.fft.fftshift(Y)
 
-Yc_shift = Y_shift * mask
-Yc = ifftshift(Yc_shift)
-X_compressed = np.real(ifft2(Yc))
+R_comp = 80     
 
-snr_ex2 = snr_db(X, X_compressed)
-print(f"SNR (imagine originală vs. comprimată): {snr_ex2:.2f} dB")
+mask_comp = low_pass_mask(X.shape, R_comp)
 
-plt.figure(figsize=(10, 4))
-plt.subplot(1, 2, 1)
-plt.imshow(X, cmap='gray')
-plt.title("Raton original (pt. compresie)")
-plt.axis('off')
+Y_comp_shift = Y_shift * mask_comp
+Y_comp = np.fft.ifftshift(Y_comp_shift)
 
-plt.subplot(1, 2, 2)
-plt.imshow(X_compressed, cmap='gray')
-plt.title(f"Comprimată FFT\nSNR = {snr_ex2:.2f} dB")
-plt.axis('off')
+X_comp = np.fft.ifft2(Y_comp).real
 
-plt.tight_layout()
+
+plt.imshow(X_comp, cmap="gray")
+plt.title(f"Imagine comprimată (LPF R={R_comp})")
+plt.axis("on")
 plt.show()
 
+snr_comp = compute_snr(X, X_comp)
+print("=== Exercițiul 2 ===")
+print(f"SNR după compresie: {snr_comp:.2f} dB\n")
 
 
-print("\n=== EXERCIȚIUL 3 ===")
 
-snr_before = snr_db(X, X_noisy)
 
-Y_n = fft2(X_noisy)
-Y_n_shift = fftshift(Y_n)
+Yc = np.fft.fft2(X_comp)
+Yc_shift = np.fft.fftshift(Yc)
 
-u = np.arange(-cols // 2, cols // 2)
-v = np.arange(-rows // 2, rows // 2)
-U, V = np.meshgrid(u, v)
-D = np.sqrt(U**2 + V**2)
+R_denoise = 40  
 
-D0 = 30  
-H = (D <= D0).astype(float)
+mask_denoise = low_pass_mask(X.shape, R_denoise)
 
-Yf_shift = Y_n_shift * H
-Yf = ifftshift(Yf_shift)
-X_denoised = np.real(ifft2(Yf))
+Y_denoised_shift = Yc_shift * mask_denoise
+Y_denoised = np.fft.ifftshift(Y_denoised_shift)
 
-snr_after = snr_db(X, X_denoised)
+X_denoised = np.fft.ifft2(Y_denoised).real
 
-print(f"SNR înainte filtrare (X vs X_noisy)   : {snr_before:.2f} dB")
-print(f"SNR după filtrare  (X vs denoised)   : {snr_after:.2f} dB")
 
-plt.figure(figsize=(12, 4))
+plt.imshow(X_denoised, cmap="gray")
+plt.title(f"Denoised (LPF R={R_denoise})")
+plt.axis("on")
+plt.show()
 
-plt.subplot(1, 3, 1)
-plt.imshow(X, cmap='gray')
-plt.title("Original")
-plt.axis('off')
+snr_before = compute_snr(X, X_comp)
+snr_after  = compute_snr(X, X_denoised)
 
-plt.subplot(1, 3, 2)
-plt.imshow(X_noisy, cmap='gray')
-plt.title(f"Noisy (din setup)\nSNR = {snr_before:.2f} dB")
-plt.axis('off')
+print("=== Exercițiul 3 ===")
+print(f"SNR înainte de filtrare (compresie): {snr_before:.2f} dB")
+print(f"SNR după filtrare (denoising):       {snr_after:.2f} dB\n")
 
-plt.subplot(1, 3, 3)
-plt.imshow(X_denoised, cmap='gray')
-plt.title(f"Denoised (LPF)\nSNR = {snr_after:.2f} dB")
-plt.axis('off')
 
-plt.tight_layout()
+
+fig, ax = plt.subplots(1, 3, figsize=(15,5))
+
+ax[0].imshow(X, cmap="gray")
+ax[0].set_title("Original")
+ax[0].axis("off")
+
+ax[1].imshow(X_comp, cmap="gray")
+ax[1].set_title(f"Compressed\nSNR={snr_before:.2f} dB")
+ax[1].axis("off")
+
+ax[2].imshow(X_denoised, cmap="gray")
+ax[2].set_title(f"Denoised\nSNR={snr_after:.2f} dB")
+ax[2].axis("off")
+
 plt.show()
